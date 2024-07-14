@@ -354,9 +354,10 @@ public:
     uint32_t getClientServerHostId() const { return m_client_server_host_id.load(); }
     void setClientServerHostId(uint32_t id)         { m_client_server_host_id = id; }
     static int m_fixed_laps;
-    bool playerReportsTableExists() const;
-    GameSetup* getGameSetup()                          { return m_game_setup; }
-    ProcessType getProcessType()                     { return m_process_type; }
+    void sendStringToPeer(std::string& s, std::shared_ptr<STKPeer>& peer) const;
+    void sendStringToAllPeers(std::string& s);
+    std::set<STKPeer*> m_team_speakers;
+    std::map<STKPeer*, std::set<irr::core::stringw>> m_message_receivers;
 };   // class ServerLobby
 
 #endif // SERVER_LOBBY_HPP
