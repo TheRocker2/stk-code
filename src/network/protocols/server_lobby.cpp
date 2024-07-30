@@ -29,6 +29,7 @@
 #include "karts/official_karts.hpp"
 #include "modes/capture_the_flag.hpp"
 #include "modes/linear_world.hpp"
+#include "modes/soccer_world.hpp"
 #include "network/crypto.hpp"
 #include "network/database_connector.hpp"
 #include "network/event.hpp"
@@ -4527,6 +4528,7 @@ bool ServerLobby::checkPeersReady(bool ignore_ai_peer) const
 //-----------------------------------------------------------------------------
 bool ServerLobby::playerReportsTableExists() const
 {
+    SoccerWorld* sw = (SoccerWorld*)World::getWorld();
     NetworkString& data = event->data();
     std::string language;
     data.decodeString(&language);
@@ -4602,6 +4604,33 @@ bool ServerLobby::playerReportsTableExists() const
         updatePlayerList();
     }
 
+    else if (argv[0] == "score")
+    {
+        if (m_state.load() != RACING)
+        {
+            NetworkString* chat = getNetworkString();
+            chat->addUInt8(LE_CHAT);
+            chat->setSynchronous(true);
+            std::string msg = "No on-going game!";
+            chat->encodeString16(StringUtils::utf8ToWide(msg));
+            peer->sendPacket(chat, true/*reliable*/);
+            delete chat;
+            return;
+        }
+
+
+        const int red_score = sw->getScore(KART_TEAM_RED);
+        const int blue_score = sw->getScore(KART_TEAM_BLUE);
+
+        NetworkString* chat = getNetworkString();
+        chat->addUInt8(LE_CHAT);
+        chat->setSynchronous(true);
+        std::string msg = "\U0001f7e5 Red " + std::to_string(red_score)+ " : " + std::to_string(blue_score) + " Blue \U0001f7e6";
+        chat->encodeString16(StringUtils::utf8ToWide(msg));
+        peer->sendPacket(chat, true/*reliable*/);
+        delete chat;
+    }
+
     else if (argv[0] == "teamchat")
     {
         NetworkString* chat = getNetworkString();
@@ -4674,6 +4703,31 @@ bool ServerLobby::playerReportsTableExists() const
         std::string message = "The number of slots have been changed to " + std::to_string(m_max_players_in_game)+".";
         sendStringToAllPeers(message);
     }
+<<<<<<< HEAD
+=======
+
+    else if (argv[0] == "powerupper-on")
+    {
+	if (m_server_owner.lock() != peer)
+        {
+	    if (!voteForCommand(peer,cmd)) return;
+        }
+	ServerConfig::m_allow_powerupper = true;
+        std::string message = "The powerupper is now on.";
+        sendStringToAllPeers(message);
+    }
+
+    else if (argv[0] == "powerupper-off")
+    {
+	if (m_server_owner.lock() != peer)
+        {
+	    if (!voteForCommand(peer,cmd)) return;
+        }
+	ServerConfig::m_allow_powerupper = false;
+        std::string message = "The powerupper is now off.";
+        sendStringToAllPeers(message);
+    }
+>>>>>>> 1a15d04a8 (Score command and bugfix)
     
     else if (argv[0] == "public")
     {
