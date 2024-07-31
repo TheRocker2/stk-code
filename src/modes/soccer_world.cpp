@@ -32,6 +32,11 @@
 #include "network/network_config.hpp"
 #include "network/network_string.hpp"
 #include "network/protocols/game_events_protocol.hpp"
+<<<<<<< HEAD
+=======
+#include "network/protocols/server_lobby.hpp"
+#include "network/protocols/global_log.hpp"
+>>>>>>> ee39ed023 (Soccer Log)
 #include "network/stk_host.hpp"
 #include "network/stk_peer.hpp"
 #include "physics/physics.hpp"
@@ -252,6 +257,7 @@ SoccerWorld::SoccerWorld() : WorldWithRank()
     m_use_highscores = false;
     m_red_ai = 0;
     m_blue_ai = 0;
+    m_soccer_log = ServerConfig::m_soccer_log;
     m_ball_track_sector = NULL;
     m_bgd.reset(new BallGoalData());
 }   // SoccerWorld
@@ -580,6 +586,19 @@ void SoccerWorld::onCheckGoalTriggered(bool first_goal)
                 sd.m_time = getTime();
             m_blue_scorers.push_back(sd);
         }
+
+        std::string player_name_log = GlobalLog::getPlayerName(sd.m_id);
+        std::string team_name = (first_goal ? "red" : "blue");
+
+        if (sd.m_correct_goal)
+	{
+            if (m_soccer_log) GlobalLog::writeLog( "goal "+ player_name_log + " "+team_name+"\n", GlobalLogTypes::POS_LOG);
+	}
+	else
+	{
+            if (m_soccer_log) GlobalLog::writeLog( "goal "+ player_name_log + " "+team_name+"\n", GlobalLogTypes::POS_LOG);
+	}
+
         if (NetworkConfig::get()->isNetworking() &&
             NetworkConfig::get()->isServer())
         {

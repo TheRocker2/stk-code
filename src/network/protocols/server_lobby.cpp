@@ -43,7 +43,11 @@
 #include "network/protocols/connect_to_peer.hpp"
 #include "network/protocols/game_protocol.hpp"
 #include "network/protocols/game_events_protocol.hpp"
+<<<<<<< HEAD
 #include "network/protocols/ranking.hpp"
+=======
+#include "network/protocols/global_log.hpp"
+>>>>>>> ee39ed023 (Soccer Log)
 #include "network/race_event_manager.hpp"
 #include "network/server_config.hpp"
 #include "network/socket_address.hpp"
@@ -1120,6 +1124,14 @@ void ServerLobby::asynchronousUpdate()
                 ServerConfig::m_flag_deactivated_time);
             RaceManager::get()->setFlagDeactivatedTicks(flag_deactivated_time);
             configRemoteKart(players, 0);
+           
+	    std::string log_msg;
+	    if(ServerConfig::m_soccer_log)
+            {
+                log_msg = "Addon: " + winner_vote.m_track_name;
+                GlobalLog::writeLog(log_msg + "\n", GlobalLogTypes::POS_LOG);
+                Log::info("AddonLog",winner_vote.m_track_name.c_str());
+            }
 
             // Reset for next state usage
             resetPeersReady();
@@ -1479,6 +1491,7 @@ void ServerLobby::finishedLoadingLiveJoinClient(Event* event)
     live_join_start_time += 3000;
 
     bool spectator = false;
+    std::string msg;
     for (const int id : peer->getAvailableKartIDs())
     {
         World::getWorld()->addReservedKart(id);
@@ -1486,6 +1499,21 @@ void ServerLobby::finishedLoadingLiveJoinClient(Event* event)
         addLiveJoiningKart(id, rki, m_last_live_join_util_ticks);
         Log::info("ServerLobby", "%s succeeded live-joining with kart id %d.",
             peer->getAddress().toString().c_str(), id);
+        if(ServerConfig::m_soccer_log)
+	{
+            GlobalLog::addIngamePlayer(id, StringUtils::wideToUtf8(rki.getPlayerName()), rki.getOnlineId() == 0);
+
+            World* w = World::getWorld();
+            if (w)
+	    {
+                SoccerWorld *sw = dynamic_cast<SoccerWorld*>(w);
+	        std::string time = std::to_string(sw->getTime());
+		auto kart_team = sw->getKartTeam(id);
+		std::string team =  kart_team==KART_TEAM_RED ? "red" : "blue";
+	        msg =  StringUtils::wideToUtf8(rki.getPlayerName()) + " joined the " + team + " team at "+ time + "\n";
+                GlobalLog::writeLog(msg, GlobalLogTypes::POS_LOG);
+	    }
+	}
     }
     if (peer->getAvailableKartIDs().empty())
     {
@@ -1670,6 +1698,9 @@ void ServerLobby::update(int ticks)
 
     handlePlayerDisconnection();
 
+    std::string time;
+    std::string time_msg;
+
     switch (m_state.load())
     {
     case SET_PUBLIC_ADDRESS:
@@ -1703,6 +1734,19 @@ void ServerLobby::update(int ticks)
             !GameProtocol::emptyInstance())
             return;
 
+        if (ServerConfig::m_soccer_log)
+	{
+            
+            World* w = World::getWorld();
+            if (w)
+	    {
+                SoccerWorld *sw = dynamic_cast<SoccerWorld*>(w);
+	        time = std::to_string(sw->getTime());
+            }
+	    time_msg = "The game ended after " + time + " seconds.\n";
+            GlobalLog::writeLog(time_msg, GlobalLogTypes::POS_LOG);
+	}
+		    
         // This will go back to lobby in server (and exit the current race)
         exitGameState();
         // Reset for next state usage
@@ -1713,6 +1757,8 @@ void ServerLobby::update(int ticks)
         m_state = RESULT_DISPLAY;
         sendMessageToPeers(m_result_ns, /*reliable*/ true);
         Log::info("ServerLobby", "End of game message sent");
+        if(ServerConfig::m_soccer_log) GlobalLog::writeLog("GAME_END\n", GlobalLogTypes::POS_LOG);
+        GlobalLog::closeLog(GlobalLogTypes::POS_LOG);
         break;
     case RESULT_DISPLAY:
         if (checkPeersReady(true/*ignore_ai_peer*/) ||
@@ -1980,6 +2026,8 @@ void ServerLobby::startSelection(const Event *event)
 
     unsigned max_player = 0;
     STKHost::get()->updatePlayers(&max_player);
+    
+    if (ServerConfig::m_soccer_log) GlobalLog::writeLog("GAME_START\n", GlobalLogTypes::POS_LOG);
 
     // Set late coming player to spectate if too many players
     auto spectators_by_limit = getSpectatorsByLimit();
@@ -2471,6 +2519,26 @@ void ServerLobby::clientDisconnected(Event* event)
         msg->encodeString(name);
         Log::info("ServerLobby", "%s disconnected", name.c_str());
     }
+
+    std::string msg2;
+    std::string player_name;
+    if(ServerConfig::m_soccer_log)
+    {
+        World* w = World::getWorld();
+        if (w)
+	{
+            SoccerWorld *sw = dynamic_cast<SoccerWorld*>(w);
+	    std::string time = std::to_string(sw->getTime());
+            for (const auto id : event->getPeer()->getAvailableKartIDs())
+	    {
+                player_name = GlobalLog::getPlayerName(id);
+		msg2 =  player_name + " left the game at " + time + ". \n";
+		GlobalLog::writeLog(msg2, GlobalLogTypes::POS_LOG);
+                GlobalLog::removeIngamePlayer(id);
+	    }
+	}
+    }
+    
 
     // Don't show waiting peer disconnect message to in game player
     STKHost::get()->sendPacketToAllPeersWith([waiting_peer_disconnected]
@@ -4431,16 +4499,7 @@ std::set<std::shared_ptr<STKPeer>> ServerLobby::getSpectatorsByLimit()
     auto peers = STKHost::get()->getPeers();
     std::set<std::shared_ptr<STKPeer>> always_spectate_peers;
 
-<<<<<<< HEAD
-    unsigned player_limit = ServerConfig::m_server_max_players;
-    // If the server has an in-game player limit lower than the lobby limit, apply it,
-    // A value of 0 for this parameter means no limit.
-    if (ServerConfig::m_max_players_in_game > 0)
-        player_limit = std::min(player_limit, (unsigned)ServerConfig::m_max_players_in_game);
-
-=======
     unsigned player_limit = m_max_players_in_game;
->>>>>>> a3bcf3cd9 (Adding /vote workaround from old fork and /slot command.)
     // only 10 players allowed for battle or soccer
     if (RaceManager::get()->isBattleMode() || RaceManager::get()->isSoccerMode())
         player_limit = std::min(player_limit, 10u);
@@ -4703,31 +4762,6 @@ bool ServerLobby::playerReportsTableExists() const
         std::string message = "The number of slots have been changed to " + std::to_string(m_max_players_in_game)+".";
         sendStringToAllPeers(message);
     }
-<<<<<<< HEAD
-=======
-
-    else if (argv[0] == "powerupper-on")
-    {
-	if (m_server_owner.lock() != peer)
-        {
-	    if (!voteForCommand(peer,cmd)) return;
-        }
-	ServerConfig::m_allow_powerupper = true;
-        std::string message = "The powerupper is now on.";
-        sendStringToAllPeers(message);
-    }
-
-    else if (argv[0] == "powerupper-off")
-    {
-	if (m_server_owner.lock() != peer)
-        {
-	    if (!voteForCommand(peer,cmd)) return;
-        }
-	ServerConfig::m_allow_powerupper = false;
-        std::string message = "The powerupper is now off.";
-        sendStringToAllPeers(message);
-    }
->>>>>>> 1a15d04a8 (Score command and bugfix)
     
     else if (argv[0] == "public")
     {
