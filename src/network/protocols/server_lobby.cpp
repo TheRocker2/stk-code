@@ -145,14 +145,6 @@ ServerLobby::ServerLobby() : LobbyProtocol()
     setHandleDisconnections(true);
     m_state = SET_PUBLIC_ADDRESS;
     m_save_server_config = true;
-    if (ServerConfig::m_ranked)
-    {
-        Log::info("ServerLobby", "This server will submit ranking scores to "
-            "the STK addons server. Don't bother hosting one without the "
-            "corresponding permissions, as they would be rejected.");
-
-        m_ranking = std::make_shared<Ranking>();
-    }
     m_result_ns = getNetworkString(m_type);
     m_result_ns->setSynchronous(true);
     m_items_complete_state = new BareNetworkString();
@@ -810,9 +802,6 @@ void ServerLobby::asynchronousUpdate()
     // Check if server owner has left
     updateServerOwner();
 
-    if (ServerConfig::m_ranked && m_state.load() == WAITING_FOR_START_GAME)
-        m_ranking->cleanup();
-
     if (allowJoinedPlayersWaiting() || (m_game_setup->isGrandPrix() &&
         m_state.load() == WAITING_FOR_START_GAME))
     {
@@ -954,13 +943,6 @@ void ServerLobby::asynchronousUpdate()
 
         unsigned player_in_game = 0;
         STKHost::get()->updatePlayers(&player_in_game);
-        // Reset lobby will be done in main thread
-        if ((player_in_game == 1 && ServerConfig::m_ranked) ||
-            player_in_game == 0)
-        {
-            resetVotingTime();
-            return;
-        }
 
         // m_server_has_loaded_world is set by main thread with atomic write
         if (m_server_has_loaded_world.load() == false)
@@ -979,12 +961,6 @@ void ServerLobby::asynchronousUpdate()
             return;
         unsigned player_in_game = 0;
         STKHost::get()->updatePlayers(&player_in_game);
-        if ((player_in_game == 1 && ServerConfig::m_ranked) ||
-            player_in_game == 0)
-        {
-            resetVotingTime();
-            return;
-        }
 
         PeerVote winner_vote;
         m_winner_peer_id = std::numeric_limits<uint32_t>::max();
@@ -1646,22 +1622,6 @@ void ServerLobby::update(int ticks)
     if (m_rs_state.load() != RS_NONE)
         return;
 
-    // Reset for ranked server if in kart / track selection has only 1 player
-    if (ServerConfig::m_ranked &&
-        m_state.load() == SELECTING &&
-        STKHost::get()->getPlayersInGame() == 1)
-    {
-        NetworkString* back_lobby = getNetworkString(m_type, 2);
-        back_lobby->setSynchronous(true);
-        back_lobby->addUInt8(LE_BACK_LOBBY)
-            .addUInt8(BLR_ONE_PLAYER_IN_RANKED_MATCH);
-        sendMessageToPeers(back_lobby, /*reliable*/true);
-        delete back_lobby;
-        resetVotingTime();
-        m_game_setup->stopGrandPrix();
-        m_rs_state.store(RS_ASYNC_RESET);
-    }
-
     handlePlayerDisconnection();
 
     std::string time;
@@ -1783,11 +1743,6 @@ void ServerLobby::registerServer(bool first_time)
                 assert(server_id_online != 0);
                 bool is_official = false;
                 server_info->get("official", &is_official);
-                if (!is_official && ServerConfig::m_ranked)
-                {
-                    Log::fatal("ServerLobby", "You don't have permission to "
-                        "host a ranked server.");
-                }
                 Log::info("ServerLobby",
                     "Server %d is now online.", server_id_online);
                 sl->m_server_id_online.store(server_id_online);
@@ -2403,65 +2358,10 @@ void ServerLobby::checkRaceFinished()
     }
 
     uint8_t ranking_changes_indication = 0;
-    if (ServerConfig::m_ranked && RaceManager::get()->modeHasLaps())
-        ranking_changes_indication = 1;
     m_result_ns->addUInt8(ranking_changes_indication);
-
-    if (ServerConfig::m_ranked)
-    {
-        computeNewRankings();
-        submitRankingsToAddons();
-    }
     m_state.store(WAIT_FOR_RACE_STOPPED);
 }   // checkRaceFinished
 
-//-----------------------------------------------------------------------------
-/** Compute the new player's rankings used in ranked servers
- */
-void ServerLobby::computeNewRankings()
-{
-    // No ranking for battle mode
-    if (!RaceManager::get()->modeHasLaps())
-        return;
-
-    World* w = World::getWorld();
-    assert(w);
-
-    unsigned player_count = RaceManager::get()->getNumPlayers();
-
-    // If all players quitted the race, we assume something went wrong
-    // and skip entirely rating and statistics updates.
-    for (unsigned i = 0; i < player_count; i++)
-    {
-        if (!w->getKart(i)->isEliminated())
-            break;
-        if ((i + 1) == player_count)
-            return;
-    }
-    
-    // Fill the results for the rankings to process
-    std::vector<RaceResultData> data;
-    for (unsigned i = 0; i < player_count; i++)
-    {
-        RaceResultData entry;
-        entry.online_id = RaceManager::get()->getKartInfo(i).getOnlineId();
-        entry.is_eliminated = w->getKart(i)->isEliminated();
-        entry.time = RaceManager::get()->getKartRaceTime(i);
-        entry.handicap = w->getKart(i)->getHandicap();
-        data.push_back(entry);
-    }
-
-    m_ranking->computeNewRankings(data, RaceManager::get()->isTimeTrialMode());
-
-    // Used to display rating change at the end of a race
-    m_result_ns->addUInt8((uint8_t)player_count);
-    for (unsigned i = 0; i < player_count; i++)
-    {
-        const uint32_t id = RaceManager::get()->getKartInfo(i).getOnlineId();
-        double change = m_ranking->getDelta(id);
-        m_result_ns->addFloat((float)change);
-    }
-}   // computeNewRankings
 //-----------------------------------------------------------------------------
 /** Called when a client disconnects.
  *  \param event The disconnect event.
@@ -2881,18 +2781,6 @@ void ServerLobby::handleUnencryptedConnection(std::shared_ptr<STKPeer> peer,
             STKHost::get()->getAllPlayerOnlineIds();
         bool duplicated_ranked_player =
             all_online_ids.find(online_id) != all_online_ids.end();
-        if (ServerConfig::m_ranked && duplicated_ranked_player)
-        {
-            NetworkString* message = getNetworkString(m_type, 2);
-            message->setSynchronous(true);
-            message->addUInt8(LE_CONNECTION_REFUSED)
-                .addUInt8(RR_INVALID_PLAYER);
-            peer->sendPacket(message, true/*reliable*/, false/*encrypted*/);
-            peer->reset();
-            delete message;
-            Log::verbose("ServerLobby", "Player refused: invalid player");
-            return;
-        }
     }
 
 #ifdef ENABLE_SQLITE3
@@ -3029,11 +2917,6 @@ void ServerLobby::handleUnencryptedConnection(std::shared_ptr<STKPeer> peer,
         updatePlayerList();
         peer->sendPacket(message_ack);
         delete message_ack;
-
-        if (ServerConfig::m_ranked)
-        {
-            getRankingForPlayer(peer->getPlayerProfiles()[0]);
-        }
     }
 
 #ifdef ENABLE_SQLITE3
@@ -3649,41 +3532,6 @@ bool ServerLobby::decryptConnectionRequest(std::shared_ptr<STKPeer> peer,
 }   // decryptConnectionRequest
 
 //-----------------------------------------------------------------------------
-void ServerLobby::getRankingForPlayer(std::shared_ptr<NetworkPlayerProfile> p)
-{
-    int priority = Online::RequestManager::HTTP_MAX_PRIORITY;
-    auto request = std::make_shared<Online::XMLRequest>(priority);
-    NetworkConfig::get()->setUserDetails(request, "get-ranking");
-
-    const uint32_t id = p->getOnlineId();
-    request->addParameter("id", id);
-    request->executeNow();
-
-    const XMLNode* result = request->getXMLData();
-    std::string rec_success;
-
-    bool success = false;
-    if (result->get("success", &rec_success))
-        if (rec_success == "yes")
-            success = true;
-
-    if (!success)
-    {
-        Log::error("ServerLobby", "No ranking info found for player %s.",
-            StringUtils::wideToUtf8(p->getName()).c_str());
-        // Kick the player to avoid his score being reset in case
-        // connection to stk addons is broken
-        auto peer = p->getPeer();
-        if (peer)
-        {
-            peer->kick();
-            return;
-        }
-    }
-    m_ranking->fill(id, result, p);
-}   // getRankingForPlayer
-
-//-----------------------------------------------------------------------------
 void ServerLobby::submitRankingsToAddons()
 {
     // No ranking for battle mode
@@ -3796,10 +3644,6 @@ void ServerLobby::addWaitingPlayersToGame()
             }
         }
         uint32_t online_id = profile->getOnlineId();
-        if (ServerConfig::m_ranked && !m_ranking->has(online_id))
-        {
-            getRankingForPlayer(peer->getPlayerProfiles()[0]);
-        }
     }
     // Re-activiate the ai
     if (auto ai = m_ai_peer.lock())
@@ -4141,10 +3985,6 @@ void ServerLobby::handlePlayerDisconnection() const
 
             World::getWorld()->eliminateKart(i,
                 false/*notify_of_elimination*/);
-            if (ServerConfig::m_ranked)
-            {
-                int abc123=0
-            }
             k->setPosition(
                 World::getWorld()->getCurrentNumKarts() + 1);
             k->finishedRace(World::getWorld()->getTime(), true/*from_server*/);

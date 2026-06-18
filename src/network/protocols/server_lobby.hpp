@@ -41,7 +41,6 @@ class NetworkString;
 class NetworkPlayerProfile;
 class STKPeer;
 class SocketAddress;
-class Ranking;
 
 namespace Online
 {
@@ -135,8 +134,6 @@ private:
         std::owner_less<std::weak_ptr<STKPeer> > > m_pending_connection;
 
     std::map<std::string, uint64_t> m_pending_peer_connection;
-
-    std::shared_ptr<Ranking> m_ranking;
 
     /* Saved the last game result */
     NetworkString* m_result_ns;
@@ -252,9 +249,6 @@ private:
     template<typename T>
     void findMajorityValue(const std::map<T, unsigned>& choices, unsigned cur_players,
                            T* best_choice, float* rate);
-    void getRankingForPlayer(std::shared_ptr<NetworkPlayerProfile> p);
-    void submitRankingsToAddons();
-    void computeNewRankings();
     void checkRaceFinished();
     void getHitCaptureLimit();
     void configPeersStartTime();
