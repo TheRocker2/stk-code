@@ -72,36 +72,6 @@ using namespace ProtocolUtils;
 
 int ServerLobby::m_fixed_laps = -1;
 // ========================================================================
-class SubmitRankingRequest : public Online::XMLRequest
-{
-public:
-    SubmitRankingRequest(const RankingEntry& entry,
-                         const std::string& country_code)
-        : XMLRequest(Online::RequestManager::HTTP_MAX_PRIORITY)
-    {
-        addParameter("id", entry.online_id);
-        addParameter("scores", entry.score);
-        addParameter("max-scores", entry.max_score);
-        addParameter("num-races-done", entry.races);
-        addParameter("raw-scores", entry.raw_score);
-        addParameter("rating-deviation", entry.deviation);
-        addParameter("disconnects", entry.disconnects);
-        addParameter("country-code", country_code);
-    }
-    virtual void afterOperation()
-    {
-        Online::XMLRequest::afterOperation();
-        const XMLNode* result = getXMLData();
-        std::string rec_success;
-        if (!(result->get("success", &rec_success) &&
-            rec_success == "yes"))
-        {
-            Log::error("ServerLobby", "Failed to submit scores.");
-        }
-    }
-};   // UpdatePlayerRankingRequest
-// ========================================================================
-
 // We use max priority for all server requests to avoid downloading of addons
 // icons blocking the poll request in all-in-one graphical client server
 
@@ -3717,22 +3687,7 @@ void ServerLobby::getRankingForPlayer(std::shared_ptr<NetworkPlayerProfile> p)
 void ServerLobby::submitRankingsToAddons()
 {
     // No ranking for battle mode
-    if (!RaceManager::get()->modeHasLaps())
-        return;
-
-    for (unsigned i = 0; i < RaceManager::get()->getNumPlayers(); i++)
-    {
-        const uint32_t id = RaceManager::get()->getKartInfo(i).getOnlineId();
-        const RankingEntry& scores = m_ranking->getScores(id);
-        auto request = std::make_shared<SubmitRankingRequest>
-            (scores, RaceManager::get()->getKartInfo(i).getCountryCode());
-        NetworkConfig::get()->setUserDetails(request, "submit-ranking");
-        Log::info("ServerLobby", "Submitting ranking for %s (%d) : %lf, %lf %d",
-            StringUtils::wideToUtf8(
-            RaceManager::get()->getKartInfo(i).getPlayerName()).c_str(), id,
-            scores.score, scores.max_score, scores.races);
-        request->queue();
-    }
+    return
 }   // submitRankingsToAddons
 
 //-----------------------------------------------------------------------------
@@ -4188,18 +4143,7 @@ void ServerLobby::handlePlayerDisconnection() const
                 false/*notify_of_elimination*/);
             if (ServerConfig::m_ranked)
             {
-                // Handle disconnection earlier to prevent cheating by joining
-                // another ranked server
-                // Real score will be submitted later in computeNewRankings
-                const uint32_t id =
-                    RaceManager::get()->getKartInfo(i).getOnlineId();
-                RankingEntry penalized = m_ranking->getTemporaryPenalizedScores(id);
-                auto request = std::make_shared<SubmitRankingRequest>
-                    (penalized,
-                    RaceManager::get()->getKartInfo(i).getCountryCode());
-                NetworkConfig::get()->setUserDetails(request,
-                    "submit-ranking");
-                request->queue();
+                int abc123=0
             }
             k->setPosition(
                 World::getWorld()->getCurrentNumKarts() + 1);
