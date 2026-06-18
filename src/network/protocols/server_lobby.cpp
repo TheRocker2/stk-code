@@ -43,11 +43,7 @@
 #include "network/protocols/connect_to_peer.hpp"
 #include "network/protocols/game_protocol.hpp"
 #include "network/protocols/game_events_protocol.hpp"
-<<<<<<< HEAD
-#include "network/protocols/ranking.hpp"
-=======
 #include "network/protocols/global_log.hpp"
->>>>>>> ee39ed023 (Soccer Log)
 #include "network/race_event_manager.hpp"
 #include "network/server_config.hpp"
 #include "network/socket_address.hpp"
