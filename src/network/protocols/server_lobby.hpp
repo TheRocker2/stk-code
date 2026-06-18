@@ -362,6 +362,7 @@ public:
     std::map<STKPeer*, std::set<irr::core::stringw>> m_message_receivers;
     int m_max_players;
     int m_max_players_in_game;
+    ProcessType getProcessType()                     { return m_process_type; }
 };   // class ServerLobby
 
 #endif // SERVER_LOBBY_HPP
