@@ -32,11 +32,8 @@
 #include "network/network_config.hpp"
 #include "network/network_string.hpp"
 #include "network/protocols/game_events_protocol.hpp"
-<<<<<<< HEAD
-=======
 #include "network/protocols/server_lobby.hpp"
 #include "network/protocols/global_log.hpp"
->>>>>>> ee39ed023 (Soccer Log)
 #include "network/stk_host.hpp"
 #include "network/stk_peer.hpp"
 #include "physics/physics.hpp"
