@@ -36,6 +36,7 @@
 #include "network/protocols/global_log.hpp"
 #include "network/stk_host.hpp"
 #include "network/stk_peer.hpp"
+#include "network/server_config.hpp"
 #include "physics/physics.hpp"
 #include "states_screens/race_gui_base.hpp"
 #include "tracks/check_goal.hpp"
